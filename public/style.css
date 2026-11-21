@@ -114,6 +114,7 @@ ol.sl li:before{content:counter(s);position:absolute;left:14px;top:12px;width:30
 footer{background:var(--t);color:#D1D5DB;padding:28px 0;margin-top:30px;font-size:14px}
 footer .row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px}
 footer a:hover{color:#fff;text-decoration:underline}
+.foot-note{margin-top:6px}
 .float{position:fixed;right:16px;bottom:16px;background:#25D366;color:#fff;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.3);z-index:60}
 .back{background:none;border:0;color:var(--g);font-weight:700;margin-bottom:12px}
 
@@ -164,3 +165,35 @@ footer a:hover{color:#fff;text-decoration:underline}
 .nrow img{width:72px;height:54px;object-fit:cover;border-radius:8px;background:var(--bg)}
 .linkbtn{background:none;border:0;color:var(--m);text-decoration:underline;padding:6px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--t);color:#fff;padding:12px 18px;border-radius:10px;font-weight:700;z-index:200;max-width:90vw;text-align:center}
+
+/* --- Save/Favourite Heart Button --- */
+.fav-count{display:none}
+.fav-btn{
+  position:absolute;top:8px;right:8px;width:36px;height:36px;border-radius:50%;background:#fff;color:#6b7280;border:0;font-size:18px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:5;display:grid;place-items:center;
+  transition:transform .15s, color .15s;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.fav-btn.active,.fav-btn:hover{color:#ef4444;transform:scale(1.15);}
+.fav-btn{transition:transform .15s, color .15s;}
+.heart-saved .fav-btn{color:#ef4444;}
+.heart-saved .fav-btn{animation:pop .2s ease forwards;}
+@keyframes pop{0%{transform:scale(1);}100%{transform:scale(1.2);}}
+
+@media(max-width:768px){.fav-btn{width:32px;height:32px;font-size:16px;top:6px;right:6px;}}
+
+/* Lightbox Gallery */
+.lightbox{
+  position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.95);
+  display: flex; align-items: center; justify-content: center; 
+  opacity: 0; visibility: hidden; transition: opacity .3s ease;
+}
+.lightbox.active{ opacity: 1; visibility: visible; }
+.lightbox img{ max-width: 95vw; max-height: 80vh; border-radius: 10px; object-fit: contain; }
+.lightbox-label{ position: absolute; bottom: 20px; color: #fff; font-size: 18px; text-shadow: 0 0 5px rgba(0,0,0,.8); }
+.lightbox-count{ position: absolute; top: 20px; color: #fff; font-size: 16px; }
+.lb-close{ position: absolute; top: 20px; right: 20px; width: 44px; height: 44px; background: rgba(0,0,0,0.5); color: #fff; border: 0; border-radius: 50%; font-size: 28px; cursor: pointer; }
+.lb-prev, .lb-next{ position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; background: rgba(0,0,0,0.5); color: #fff; border: 0; border-radius: 50%; font-size: 24px; cursor: pointer; z-index: 1; }
+.lb-prev{ left: 20px; }
+.lb-next{ right: 20px; }
+@media(max-width:768px){ .lb-close,.lb-prev,.lb-next{ width: 40px; height: 40px; font-size: 20px; } }

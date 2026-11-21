@@ -1,3 +1,4 @@
+
 (function () {
 'use strict';
 
@@ -27,6 +28,8 @@ const AV = {
   taken: { cls: 'av-t', text: 'Taken' },
   reserved: { cls: 'av-r', text: 'Reserved - Viewing' },
 };
+// Availability of a room as the page understands it
+const av = (r) => (r && AV[r.availability] ? r.availability : 'available');
 const ROOMS = {}; // rooms already shown on screen, so popups can reuse their photo, price and area
 let waitingMine = {}; // rooms this visitor joined the waiting list for (remembered on this phone)
 try { waitingMine = JSON.parse(localStorage.getItem('fmr_wait') || '{}') || {}; } catch (e) { waitingMine = {}; }
@@ -34,7 +37,58 @@ function rememberWaiting(id) {
   waitingMine[id] = 1;
   try { localStorage.setItem('fmr_wait', JSON.stringify(waitingMine)); } catch (e) { /* storage blocked */ }
 }
-const av = (r) => (AV[r.availability] ? r.availability : 'available');
+
+// --- Favourites: Save rooms to localStorage, no login needed ---
+const FAV_KEY = 'findmyroom_favourites';
+let favourites = []; // array of room IDs (as strings)
+
+function getFavourites() {
+  try {
+    const data = localStorage.getItem(FAV_KEY);
+    const arr = data ? JSON.parse(data) : [];
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveFavourites(favs) {
+  favourites = favs;
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  } catch (e) { /* storage failed, just keep in-memory */ }
+  updateFavCount();
+}
+
+function isFavourite(id) {
+  return favourites.includes(String(id));
+}
+
+function toggleFavourite(id) {
+  const sid = String(id);
+  if (isFavourite(sid)) {
+    saveFavourites(favourites.filter((i) => i !== sid));
+  } else {
+    saveFavourites([...favourites, sid]);
+  }
+}
+
+// Update the header favourites count
+function updateFavCount() {
+  const countEl = document.querySelector('a[data-p="saved"] .fav-count');
+  if (!countEl) return;
+  const count = favourites.length;
+  if (count > 0) {
+    countEl.textContent = count;
+    countEl.style.display = 'inline';
+  } else {
+    countEl.style.display = 'none';
+  }
+}
+
+// Initialize favourites from localStorage on startup
+favourites = getFavourites();
+
 const fmtDate = (iso) => {
   try { return new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return ''; }
 };
@@ -148,6 +202,7 @@ function statusBox(r) {
 function card(r) {
   ROOMS[r.id] = r;
   const a = av(r);
+  const fav = isFavourite(r.id);
   const photo = r.photos[0] ? `<img class="${a === 'taken' ? 'gone' : ''}" src="${esc(r.photos[0])}" alt="${esc(r.type)} in ${esc(r.area)}" loading="lazy">` : '';
   const stamp = a === 'taken' ? '<div class="stamp"><span>TAKEN</span></div>' : '';
   let actions;
@@ -159,7 +214,7 @@ function card(r) {
       + (a === 'reserved' ? `<div class="note">Someone is viewing this room</div><div class="wait full" data-wait="${r.id}">${waitControls(r)}</div>` : '')
       + `<button class="btn out sm full" data-act="check" data-id="${r.id}">Check Availability</button>`;
   }
-  return `<div class="card"><div class="ph"><div class="tags"><span class="tag">${esc(r.type)}</span><span class="avb ${AV[a].cls}">${AV[a].text}</span></div><span>🏠</span>${photo}${stamp}</div>
+  return `<div class="card"><div class="ph"><div class="tags"><span class="tag">${esc(r.type)}</span><span class="avb ${AV[a].cls}">${AV[a].text}</span></div><span>🏠</span>${photo}${stamp}<button class="fav-btn" data-id="${r.id}" aria-label="${fav ? 'Unsave room' : 'Save room'}"${fav ? ' style="color:#EF4444"' : ''}>${fav ? '♥️' : '♡'}</button></div>
   <div class="cb"><div class="badges">${badge(r.v)}${r.demo ? '<span class="ex">Example</span>' : ''}</div>
   <div class="price">${money(r.price)} <small>/ month</small></div>
   <div class="loc">${esc(r.area)}</div><div class="meta">${esc(r.prov)} · For ${esc(r.for)}</div>
@@ -388,7 +443,7 @@ async function room(id, alive) {
   const rv = r.reviews;
   reviewAnswers = {};
   const photo = (i, cls) => r.photos[i]
-    ? `<div class="ph ${cls || ''}"><span>🏠</span><img src="${esc(r.photos[i])}" alt="${PHOTO_LABELS[i]} - ${esc(r.type)} in ${esc(r.area)}" loading="lazy"><span class="cap">${PHOTO_LABELS[i]}</span></div>`
+    ? `<div class="ph ${cls || ''}"><span>🏠</span><img class="gallery-img" data-label="${PHOTO_LABELS[i]}" onclick="openLightbox(${i})" src="${esc(r.photos[i])}" alt="${PHOTO_LABELS[i]} - ${esc(r.type)} in ${esc(r.area)}" loading="lazy"><span class="cap">${PHOTO_LABELS[i]}</span></div>`
     : '';
   app.innerHTML = `<section><div class="wrap"><button class="back" data-act="back">← Back</button>
   <div class="gal">${photo(0, 'big')}<div class="side">${[1, 2, 3].map((i) => photo(i)).join('')}</div></div>
@@ -419,34 +474,50 @@ async function room(id, alive) {
   window.scrollTo(0, 0);
 }
 
-const ADMIN_PASSWORD = 'admin123'; // TODO: move to env later
+/* ---------- admin ---------- */
+const ADMIN_PASSWORD = 'admin123';
+let adminOk = false;
+
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  app.prepend(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
 
 async function adminPage(alive) {
-  const pw = prompt('Enter admin password:'); // TODO: move to env later
-  if (pw !== ADMIN_PASSWORD) { alert('Wrong password.'); route(); return; }
+  if (!adminOk) {
+    const pw = prompt('Enter admin password:');
+    if (pw !== ADMIN_PASSWORD) {
+      if (pw !== null) alert('Wrong password.');
+      location.hash = '#/home';
+      return;
+    }
+    adminOk = true;
+  }
   if (!alive()) return;
   let rooms;
-  try { rooms = await api('/api/admin/rooms'); } catch (e) { if (alive()) app.innerHTML = `<p>${esc(e.message)}</p>`; route(); return; }
-  if (!alive()) return;
-
-  // Toast function
-  function showToast(msg) {
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = msg;
-    app.prepend(toast);
-    setTimeout(() => toast.remove(), 3000);
+  try {
+    rooms = await api('/api/admin/rooms');
+  } catch (e) {
+    if (alive()) app.innerHTML = `<div class="wrap"><p>${esc(e.message)}</p></div>`;
+    return;
   }
+  if (!alive()) return;
+  renderAdmin(rooms.items, alive);
+}
 
+function renderAdmin(items, alive) {
   app.innerHTML = `
-    <section><div class=\"wrap\">
+    <section><div class="wrap">
       <h2>Admin: Room Management</h2>
-      <div class=\"ad-bar\">
-        <div class=\"pill\" id=\"pill-available\" class=\"pill hot\">Available: ${rooms.items.filter(l => l.availability === 'available').length}</div>
-        <div class=\"pill\">Reserved: ${rooms.items.filter(l => l.availability === 'reserved').length}</div>
-        <div class=\"pill\">Taken: ${rooms.items.filter(l => l.availability === 'taken').length}</div>
+      <div class="ad-bar">
+        <div class="pill hot" id="pill-available">Available: ${items.filter((l) => av(l) === 'available').length}</div>
+        <div class="pill">Reserved: ${items.filter((l) => av(l) === 'reserved').length}</div>
+        <div class="pill">Taken: ${items.filter((l) => av(l) === 'taken').length}</div>
       </div>
-      <div class=\"ad-table\">
+      <div class="ad-table">
         <table>
           <thead>
             <tr>
@@ -461,72 +532,104 @@ async function adminPage(alive) {
             </tr>
           </thead>
           <tbody>
-            ${rooms.items.map(r => {
+            ${items.map((r) => {
               const a = av(r);
-              const wc = db.waiting.filter(x => x.listingId === r.id).length;
-              const lordWa = r.phone ? 'https://wa.me/' + r.phone.replace(/^27/, '') : '';
+              const wc = r.waitingCount || 0;
+              const lordWa = r.phone ? 'https://wa.me/' + String(r.phone).replace(/^27/, '') : '';
               return `
             <tr>
-              <td><img src="${r.photos[0] || ''}" width="40" height="30" style="object-fit:cover;border-radius:4px;" alt="${esc(r.type)}"></td>
+              <td><img src="${esc((r.photos && r.photos[0]) || '')}" width="40" height="30" style="object-fit:cover;border-radius:4px;" alt="${esc(r.type)}"></td>
               <td><span style="font-size:12px;">${esc(r.area)}</span></td>
-              <td><b>R${r.price}</b></td>
+              <td><b>R${esc(r.price)}</b></td>
               <td><span style="font-size:12px;">${esc(r.fullName)}</span></td>
-              <td><a href="${lordWa}" target="_blank" style="font-size:12px;color:var(--m)">${r.phone ? r.phone.slice(-8) : '—'}</a></td>
+              <td><a href="${esc(lordWa)}" target="_blank" rel="noopener" style="font-size:12px;color:var(--m)">${r.phone ? esc(String(r.phone).slice(-8)) : '—'}</a></td>
               <td><span class="st ${a}">${a}</span></td>
               <td>
-                <button class="btn sm ${a === 'available' ? 'av-a' : a === 'taken' ? 'av-t' : 'av-r'}" data-act="set-availability" data-id="${r.id}" data-value="available">Available</button>
-                <button class="btn sm ${a === 'available' ? 'av-r' : a === 'taken' ? 'av-t' : 'av-a'}" data-act="set-availability" data-id="${r.id}" data-value="reserved">Reserved</button>
-                <button class="btn sm ${a === 'available' ? 'av-t' : a === 'reserved' ? 'av-a' : 'av-t'}" data-act="set-availability" data-id="${r.id}" data-value="taken">Taken</button>
+                <button class="btn sm ${a === 'available' ? 'av-a' : 'out'}" data-act="set-availability" data-id="${r.id}" data-value="available">Available</button>
+                <button class="btn sm ${a === 'reserved' ? 'av-r' : 'out'}" data-act="set-availability" data-id="${r.id}" data-value="reserved">Reserved</button>
+                <button class="btn sm ${a === 'taken' ? 'av-t' : 'out'}" data-act="set-availability" data-id="${r.id}" data-value="taken">Taken</button>
               </td>
               <td><b>${wc}</b> ${wc === 1 ? 'person' : 'people'}</td>
-            </tr>`
+            </tr>`;
             }).join('')}
           </tbody>
         </table>
       </div>
       <p class="meta" style="margin-top:16px;font-size:12px">Changes persist after refresh. Landlords WhatsApp admin to update status.</p>
     </div></section>`;
-
-  // Handle change status buttons
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('[data-act="set-availability"]')) {
-      const btn = e.target.closest('[data-act="set-availability"]');
-      const id = Number(btn.dataset.id);
-      const value = btn.dataset.value;
-
-      if (value === 'taken') {
-        if (!confirm('This room is now marked TAKEN. Tenants will see Notify Me button. Continue?')) return;
-      }
-      if (value === 'available') {
-        const w = db.waiting.filter(x => x.listingId === id && !x.notified);
-        if (!confirm('This room is now marked AVAILABLE again. ' + w.length + ' people are waiting for this room. Notify them now?')) return;
-        w.forEach(x => { x.notified = true; });
-        console.log('[admin] Notifying', w.length, 'waiting tenants');
-        store.save();
-        showToast('Notifications sent to ' + w.length + ' tenants on WhatsApp.');
-      }
-
-      const l = db.listings.find(x => x.id === id);
-      if (l) {
-        l.availability = value;
-        l.availabilityUpdatedAt = new Date().toISOString();
-        store.save();
-        showToast('Room in ' + l.area + ' updated to ' + value);
-        adminPage(alive);
-      }
-      return;
-    }
-  });
-
-  // Close on escape
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 }
 
-// Activate admin page on hashchange
-window.addEventListener('hashchange', () => {
-  if (location.hash === '#/admin') adminPage(alive());
-});
+async function adminSetAvailability(id, value) {
+  const room = ROOMS[id];
+  if (value === 'taken' && !confirm('This room will be marked TAKEN. Tenants will see the Notify Me button. Continue?')) return;
+  if (value === 'available' && !confirm('This room will be marked AVAILABLE again. People on the waiting list will be notified. Continue?')) return;
+  try {
+    await post('/api/admin/rooms/' + encodeURIComponent(id) + '/availability', { availability: value });
+    showToast('Room updated to ' + value);
+    route();
+  } catch (e) {
+    alert(e.message);
+  }
+}
 
+/* ---------- saved rooms ---------- */
+async function renderSavedPage(alive) {
+  const ids = favourites.slice();
+  const head = `<h2 style="font-family:Georgia,serif; font-size:28px; margin-bottom:12px;">My Saved Rooms</h2>
+    <p style="color:var(--m); margin-bottom:24px;">Rooms you saved. They are saved on this phone only.</p>`;
+
+  if (ids.length === 0) {
+    app.innerHTML = `
+      <section style="padding:34px 0">
+        <div class="wrap">
+          ${head}
+          <div style="text-align:center">
+            <div style="width:80px; height:80px; background:var(--bg); border-radius:50%; margin:0 auto 16px; display:grid; place-items:center; font-size:48px;">🤍</div>
+            <h3 style="margin-bottom:12px;">No saved rooms yet</h3>
+            <p style="color:var(--m);">Tap the ❤️ on any room to save it here.</p>
+            <a href="#/find" class="btn" style="background:var(--g); color:#fff; padding:12px 24px; border-radius:10px; font-weight:700;">Find a Room →</a>
+          </div>
+        </div>
+      </section>`;
+    return;
+  }
+
+  app.innerHTML = `<section style="padding:34px 0"><div class="wrap">${head}${loading('Loading your saved rooms…')}</div></section>`;
+
+  // Ask the server for each saved room. Rooms that were removed or hidden come back as null.
+  const results = await Promise.all(ids.map((id) =>
+    api('/api/listings/' + encodeURIComponent(id)).then((d) => d.item).catch(() => null)));
+  if (!alive()) return;
+  const savedRooms = results.filter(Boolean);
+
+  if (savedRooms.length === 0) {
+    app.innerHTML = `<section style="padding:34px 0"><div class="wrap">${head}<div class="empty">Your saved rooms are no longer available.</div></div></section>`;
+    return;
+  }
+
+  app.innerHTML = `
+    <section style="padding:34px 0">
+      <div class="wrap">
+        ${head}
+        <div class="ad-bar" style="margin-bottom:16px;">
+          <div class="pill" style="background:var(--bg); border-radius:99px; padding:4px 12px; font-size:13px; font-weight:700;">${savedRooms.length} saved</div>
+          <button class="btn sm out" id="clear-all-btn" style="background:#fff; color:var(--r); border:2px solid var(--r); padding:6px 12px; border-radius:10px; font-size:12px;">Clear All Saved</button>
+        </div>
+        <div class="grid" id="saved-rooms-grid">${savedRooms.map(card).join('')}</div>
+        <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--b); font-size:12px; color:var(--m);">
+          <p>Saved on this phone only. If you use another phone, your saved rooms will not show there. This is to keep you safe - no login needed.</p>
+        </div>
+      </div>
+    </section>`;
+
+  $('#clear-all-btn').addEventListener('click', () => {
+    if (!confirm('Remove all saved rooms?')) return;
+    saveFavourites([]);
+    renderSavedPage(alive);
+  });
+}
+
+/* ---------- other pages ---------- */
 function list() {
   app.innerHTML = `<section><div class="wrap"><h2>List Your Room</h2><p class="sub">Free. Takes 2 minutes. Your WhatsApp number stays on your listing so tenants can always reach you.</p>
   <form class="f" id="lf">
@@ -658,6 +761,7 @@ function route() {
     list, need, safety, about,
     admin: () => adminPage(alive),
     scams: () => scams(alive),
+    saved: () => renderSavedPage(alive),
   };
   (pages[p] || pages.home)();
   if (p !== 'room') window.scrollTo(0, 0);
@@ -665,6 +769,24 @@ function route() {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('a[href="#/find"]')) F = {};
+
+  // Heart button: save / unsave a room without opening it
+  const heart = e.target.closest('.fav-btn');
+  if (heart) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = heart.dataset.id;
+    toggleFavourite(id);
+    if (location.hash === '#/saved') { route(); return; } // room disappears from the saved list
+    const on = isFavourite(id);
+    heart.textContent = on ? '♥️' : '♡';
+    heart.style.color = on ? '#EF4444' : '';
+    heart.setAttribute('aria-label', on ? 'Unsave room' : 'Save room');
+    heart.style.transform = 'scale(1.2)';
+    setTimeout(() => { heart.style.transform = ''; }, 200);
+    return;
+  }
+
   const t = e.target.closest('[data-act]');
   if (e.target.id === 'modal') return closeModal();
   if (!t) return;
@@ -677,6 +799,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'notify') notifyBox(t.dataset.id);
   else if (act === 'notify-send') sendNotify(t.dataset.id, t);
   else if (act === 'check') checkRoom(t.dataset.id, t);
+  else if (act === 'set-availability') adminSetAvailability(t.dataset.id, t.dataset.value);
   else if (act === 'back') history.back();
   else if (act === 'area') { F = { q: t.dataset.a }; location.hash = '#/find'; }
   else if (act === 'yn') {
@@ -705,6 +828,127 @@ window.addEventListener('hashchange', route);
   $('#wafloat').href = 'https://wa.me/' + CFG.whatsapp + '?text=' + encodeURIComponent('Hi FindMyRoom');
   $('#f-fb').href = CFG.facebook;
   $('#f-tt').href = CFG.tiktok;
+  updateFavCount();
   route();
 })();
+
+// Lightbox Gallery
+let galleryImages = [];
+let galleryIndex = 0;
+
+function openLightbox(index) {
+  galleryIndex = index;
+  // Collect all gallery images on the page
+  galleryImages = document.querySelectorAll('.gallery-img');
+  // Filter out elements without a valid src
+  const validImages = [];
+  galleryImages.forEach((img) => {
+    if (img.src && !img.src.includes('placeholder') && img.src.length > 0) {
+      validImages.push({
+        src: img.src,
+        label: img.dataset.label || 'Room',
+      });
+    }
+  });
+  galleryImages = validImages;
+
+  if (galleryImages.length === 0) return;
+
+  galleryIndex = Math.max(0, Math.min(index, galleryImages.length - 1));
+
+  const lightbox = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lightbox-img');
+  const lbLabel = document.getElementById('lightbox-label');
+  const lbCount = document.getElementById('lightbox-count');
+
+  lbImg.src = galleryImages[galleryIndex].src;
+  lbLabel.textContent = galleryImages[galleryIndex].label;
+  lbCount.textContent = `${galleryIndex + 1} / ${galleryImages.length}`;
+
+  lightbox.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+// The photos use onclick="openLightbox(...)", which needs a global function
+window.openLightbox = openLightbox;
+
+function lightboxMove(dir) {
+  galleryIndex = (galleryIndex + dir + galleryImages.length) % galleryImages.length;
+  showLightboxImage();
+}
+
+function showLightboxImage() {
+  const lbImg = document.getElementById('lightbox-img');
+  const lbLabel = document.getElementById('lightbox-label');
+  const lbCount = document.getElementById('lightbox-count');
+
+  lbImg.src = galleryImages[galleryIndex].src;
+  lbLabel.textContent = galleryImages[galleryIndex].label;
+  lbCount.textContent = `${galleryIndex + 1} / ${galleryImages.length}`;
+}
+
+function closeLightbox() {
+  const lightbox = document.getElementById('lightbox');
+  lightbox.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  const lightbox = document.getElementById('lightbox');
+  if (!lightbox.classList.contains('active')) return;
+
+  if (e.key === 'Escape') {
+    closeLightbox();
+  } else if (e.key === 'ArrowRight') {
+    lightboxMove(1);
+  } else if (e.key === 'ArrowLeft') {
+    lightboxMove(-1);
+  }
+});
+
+// Swipe navigation for mobile
+let touchStartX = 0;
+let touchEndX = 0;
+
+document.addEventListener('touchstart', (e) => {
+  touchStartX = e.changedTouches[0].screenX;
+}, false);
+
+document.addEventListener('touchend', (e) => {
+  touchEndX = e.changedTouches[0].screenX;
+  handleSwipe();
+}, false);
+
+function handleSwipe() {
+  const lightbox = document.getElementById('lightbox');
+  if (!lightbox.classList.contains('active')) return;
+
+  const swipeThreshold = 50;
+  const diff = touchStartX - touchEndX;
+
+  if (Math.abs(diff) > swipeThreshold) {
+    if (diff > 0) {
+      // Swipe left - next image
+      lightboxMove(1);
+    } else {
+      // Swipe right - previous image
+      lightboxMove(-1);
+    }
+  }
+}
+
+// Close on background click
+document.getElementById('lightbox').addEventListener('click', (e) => {
+  const lightbox = document.getElementById('lightbox');
+  if (e.target === lightbox) {
+    closeLightbox();
+  }
+});
+
+// Arrow button listeners
+document.querySelector('.lb-prev').addEventListener('click', () => lightboxMove(-1));
+document.querySelector('.lb-next').addEventListener('click', () => lightboxMove(1));
+document.querySelector('.lb-close').addEventListener('click', closeLightbox);
+
 })();

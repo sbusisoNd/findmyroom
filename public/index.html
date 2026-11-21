@@ -16,6 +16,7 @@
 <nav class="links" id="nl">
 <a href="#/" data-p="home">Home</a>
 <a href="#/find" data-p="find">Find a Room</a>
+<a href="#/saved" data-p="saved"> <span class="fav-count">0</span>Saved</a>
 <a href="#/list" data-p="list">List Your Room</a>
 <a href="#/need" data-p="need">I Need A Room</a>
 <a href="#/safety" data-p="safety">Avoid Scams</a>
@@ -35,10 +36,19 @@
 <a href="#" id="f-wa" target="_blank" rel="noopener">WhatsApp</a>
 </div>
 <div> NEVER pay before viewing. We never take deposits. You pay the landlord directly, only after viewing.</div>
-<div style="margin-top:6px">© 2026 FindMyRoom. Find a room anywhere in South Africa. No agent. No stress.</div>
+<div class="foot-note">© 2026 FindMyRoom. Find a room anywhere in South Africa. No agent. No stress.</div>
 </div></footer>
 <a class="float" id="wafloat" href="#" target="_blank" rel="noopener" aria-label="WhatsApp support">💬</a>
 
+<!-- Lightbox Gallery -->
+<div id="lightbox" class="lightbox">
+  <img id="lightbox-img" alt="">
+  <p id="lightbox-label" class="lightbox-label"></p>
+  <p id="lightbox-count" class="lightbox-count"></p>
+  <button class="lb-close" aria-label="Close lightbox">✕</button>
+  <button class="lb-prev" aria-label="Previous image">‹</button>
+  <button class="lb-next" aria-label="Next image">›</button>
+</div>
 <script src="/app.js"></script>
 </body>
 </html>
