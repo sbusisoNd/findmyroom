@@ -183,6 +183,7 @@ footer a:hover{color:#fff;text-decoration:underline}
 @media(max-width:768px){.fav-btn{width:32px;height:32px;font-size:16px;top:6px;right:6px;}}
 
 /* Lightbox Gallery */
+.gallery-img{cursor:zoom-in}
 .lightbox{
   position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.95);
   display: flex; align-items: center; justify-content: center; 

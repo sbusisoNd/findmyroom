@@ -1,4 +1,3 @@
-
 (function () {
 'use strict';
 
@@ -28,10 +27,10 @@ const AV = {
   taken: { cls: 'av-t', text: 'Taken' },
   reserved: { cls: 'av-r', text: 'Reserved - Viewing' },
 };
-// Availability of a room as the page understands it
+
 const av = (r) => (r && AV[r.availability] ? r.availability : 'available');
-const ROOMS = {}; // rooms already shown on screen, so popups can reuse their photo, price and area
-let waitingMine = {}; // rooms this visitor joined the waiting list for (remembered on this phone)
+const ROOMS = {}; 
+let waitingMine = {}; 
 try { waitingMine = JSON.parse(localStorage.getItem('fmr_wait') || '{}') || {}; } catch (e) { waitingMine = {}; }
 function rememberWaiting(id) {
   waitingMine[id] = 1;
@@ -86,7 +85,6 @@ function updateFavCount() {
   }
 }
 
-// Initialize favourites from localStorage on startup
 favourites = getFavourites();
 
 const fmtDate = (iso) => {
@@ -101,7 +99,7 @@ const money = (n) => 'R' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const opts = (arr, first) => (first ? `<option value="">${first}</option>` : '') + arr.map((x) => `<option>${esc(x)}</option>`).join('');
 const app = $('#app');
 let CFG = { whatsapp: '27710000000', email: '', facebook: '#', tiktok: '#', founder: '[Founder Name]' };
-let F = {}; // search filters remembered between pages
+let F = {}; 
 
 async function api(path, options) {
   let r;
@@ -123,7 +121,7 @@ async function api(path, options) {
 const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const loading = (t) => `<div class="empty">${t || 'Loading…'}</div>`;
 
-// Resize photos in the phone before uploading: saves the landlord's data and keeps uploads fast.
+
 async function shrinkImage(file) {
   try {
     const bmp = await createImageBitmap(file);
@@ -180,7 +178,6 @@ const badge = (v) => {
   return `<button class="badge ${b.c}" data-act="badge" data-v="${v in BADGE ? v : 1}" aria-label="${esc(b.n)}. Tap to learn more">${b.i} ${esc(b.n)}</button>`;
 };
 
-// Landlords never change a status themselves. They WhatsApp the owner, with area and price already typed in.
 const lordLink = (r) => 'https://wa.me/' + CFG.whatsapp + '?text=' + encodeURIComponent(
   `Hi FindMyRoom, I am the landlord of the room in ${r.area} for R${r.price}. Please update it to: TAKEN / AVAILABLE / RESERVED`);
 
@@ -274,7 +271,7 @@ async function checkRoom(id, btn) {
   let r = ROOMS[id];
   btn.disabled = true;
   try {
-    const d = await api('/api/listings/' + encodeURIComponent(id)); // ask the server for the latest status
+    const d = await api('/api/listings/' + encodeURIComponent(id)); 
     r = Object.assign(r || {}, d.item);
     ROOMS[id] = r;
   } catch (e) {
@@ -283,7 +280,7 @@ async function checkRoom(id, btn) {
       modal(`<h3>Room not available</h3><p>${esc(e.message)}</p><button class="btn" data-act="close">OK</button>`);
       return;
     }
-    // no data or a server hiccup: use what we already know about the room
+   
   }
   btn.disabled = false;
   if (!r) return;
@@ -310,7 +307,6 @@ function showSuccess(form, msg, extra) {
   window.scrollTo(0, 0);
 }
 
-// Wires up a form: shows errors, disables the button while sending.
 function handleForm(form, label, send) {
   const btn = form.querySelector('button[type=submit]');
   const errBox = document.createElement('div');
@@ -443,7 +439,7 @@ async function room(id, alive) {
   const rv = r.reviews;
   reviewAnswers = {};
   const photo = (i, cls) => r.photos[i]
-    ? `<div class="ph ${cls || ''}"><span>🏠</span><img class="gallery-img" data-label="${PHOTO_LABELS[i]}" onclick="openLightbox(${i})" src="${esc(r.photos[i])}" alt="${PHOTO_LABELS[i]} - ${esc(r.type)} in ${esc(r.area)}" loading="lazy"><span class="cap">${PHOTO_LABELS[i]}</span></div>`
+    ? `<div class="ph ${cls || ''}"><span>🏠</span><img class="gallery-img" data-label="${PHOTO_LABELS[i]}" data-idx="${i}" src="${esc(r.photos[i])}" alt="${PHOTO_LABELS[i]} - ${esc(r.type)} in ${esc(r.area)}" loading="lazy"><span class="cap">${PHOTO_LABELS[i]}</span></div>`
     : '';
   app.innerHTML = `<section><div class="wrap"><button class="back" data-act="back">← Back</button>
   <div class="gal">${photo(0, 'big')}<div class="side">${[1, 2, 3].map((i) => photo(i)).join('')}</div></div>
@@ -596,7 +592,6 @@ async function renderSavedPage(alive) {
 
   app.innerHTML = `<section style="padding:34px 0"><div class="wrap">${head}${loading('Loading your saved rooms…')}</div></section>`;
 
-  // Ask the server for each saved room. Rooms that were removed or hidden come back as null.
   const results = await Promise.all(ids.map((id) =>
     api('/api/listings/' + encodeURIComponent(id)).then((d) => d.item).catch(() => null)));
   if (!alive()) return;
@@ -770,6 +765,14 @@ function route() {
 document.addEventListener('click', (e) => {
   if (e.target.closest('a[href="#/find"]')) F = {};
 
+  // Room photos: tap to open the fullscreen gallery
+  const galleryPhoto = e.target.closest('.gallery-img');
+  if (galleryPhoto) {
+    e.preventDefault();
+    openLightbox(galleryPhoto);
+    return;
+  }
+
   // Heart button: save / unsave a room without opening it
   const heart = e.target.closest('.fav-btn');
   if (heart) {
@@ -836,40 +839,21 @@ window.addEventListener('hashchange', route);
 let galleryImages = [];
 let galleryIndex = 0;
 
-function openLightbox(index) {
-  galleryIndex = index;
-  // Collect all gallery images on the page
-  galleryImages = document.querySelectorAll('.gallery-img');
-  // Filter out elements without a valid src
-  const validImages = [];
-  galleryImages.forEach((img) => {
-    if (img.src && !img.src.includes('placeholder') && img.src.length > 0) {
-      validImages.push({
-        src: img.src,
-        label: img.dataset.label || 'Room',
-      });
-    }
-  });
-  galleryImages = validImages;
-
+function openLightbox(target) {
+  
+  const els = [...document.querySelectorAll('.gallery-img')].filter((img) => img.getAttribute('src'));
+  galleryImages = els.map((img) => ({ src: img.src, label: img.dataset.label || 'Room' }));
   if (galleryImages.length === 0) return;
 
-  galleryIndex = Math.max(0, Math.min(index, galleryImages.length - 1));
+  const idx = typeof target === 'number' ? target : els.indexOf(target);
+  galleryIndex = Math.max(0, Math.min(idx, galleryImages.length - 1));
 
-  const lightbox = document.getElementById('lightbox');
-  const lbImg = document.getElementById('lightbox-img');
-  const lbLabel = document.getElementById('lightbox-label');
-  const lbCount = document.getElementById('lightbox-count');
-
-  lbImg.src = galleryImages[galleryIndex].src;
-  lbLabel.textContent = galleryImages[galleryIndex].label;
-  lbCount.textContent = `${galleryIndex + 1} / ${galleryImages.length}`;
-
-  lightbox.classList.add('active');
+  showLightboxImage();
+  document.getElementById('lightbox').classList.add('active');
   document.body.style.overflow = 'hidden';
 }
 
-// The photos use onclick="openLightbox(...)", which needs a global function
+
 window.openLightbox = openLightbox;
 
 function lightboxMove(dir) {
@@ -929,10 +913,10 @@ function handleSwipe() {
 
   if (Math.abs(diff) > swipeThreshold) {
     if (diff > 0) {
-      // Swipe left - next image
+      
       lightboxMove(1);
     } else {
-      // Swipe right - previous image
+      
       lightboxMove(-1);
     }
   }
